@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"mime"
 	"net"
 	"net/http"
 	"os"
@@ -65,6 +66,11 @@ func runWeb() {
 	if err != nil {
 		fatal("화면 파일을 읽지 못했습니다", err)
 	}
+
+	// 어떤 Windows는 레지스트리에 .js가 text/plain으로 잡혀 있어서 모듈 스크립트가 안 뜸 → 직접 지정
+	mime.AddExtensionType(".js", "text/javascript; charset=utf-8")
+	mime.AddExtensionType(".css", "text/css; charset=utf-8")
+
 	mux.Handle("/", http.FileServer(http.FS(static)))
 
 	// 상태 확인: 화면이 서버와 연결됐는지, 설정을 어디서 읽는지 보여 줌
