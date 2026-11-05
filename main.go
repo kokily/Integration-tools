@@ -6,11 +6,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 const usage = `사용법:
   go run . 발주서 <웰스토리 원본.xlsx>
-  go run . 결산서 <계약.xls> <비계약.xls>`
+  go run . 결산서 <계약.xls> <비계약.xls> [지난달 결산자료 폴더]`
 
 func main() {
 	if len(os.Args) < 2 {
@@ -30,10 +31,14 @@ func main() {
 		}
 		runOrder(os.Args[2], cfg)
 	case "결산서":
-		if len(os.Args) != 4 {
+		if len(os.Args) != 4 && len(os.Args) != 5 {
 			log.Fatal(usage)
 		}
-		runSettlement(os.Args[2], os.Args[3], cfg)
+		templateDir := "" // 양식 폴더는 선택 사항
+		if len(os.Args) == 5 {
+			templateDir = os.Args[4]
+		}
+		runSettlement(os.Args[2], os.Args[3], templateDir, cfg)
 	default:
 		log.Fatalf("알 수 없는 기능: %s\n%s", os.Args[1], usage)
 	}
@@ -91,8 +96,8 @@ func runOrder(src string, cfg *Config) {
 	fmt.Printf("\n완료: %s 에 업로드 파일 %d개 + 확인용_전체.xlsx\n", outDir, len(groups))
 }
 
-// runSettlement: ESP 기간별구매현황(계약/비계약) → 결산서 붙여넣기용 파일
-func runSettlement(contractPath, nonContractPath string, cfg *Config) {
+// runSettlement: ESP 기간별구매현황(계약/비계약) → 결산서 붙여넣기용 파일 + (양식 폴더가 있으면) 결산자료 4개
+func runSettlement(contractPath, nonContractPath, templateDir string, cfg *Config) {
 	contract, err := readESP(contractPath)
 	if err != nil {
 		log.Fatalf("%s: %v", contractPath, err)
@@ -118,11 +123,40 @@ func runSettlement(contractPath, nonContractPath string, cfg *Config) {
 		fmt.Printf("%-6s %4d건  금액 합계 %.0f\n", s.Name, len(s.Rows), sum)
 	}
 
-	// 파일 이름의 월: 계약 원본 첫 줄 입고일자 "2026-10-01" → "2026-10"
-	month := contract[0].Date[:7]
-	out := filepath.Join(filepath.Dir(contractPath), "결산서_붙여넣기_"+month+".xlsx")
-	if err := writeSettlementPasteFile(out, sheets); err != nil {
+	// 결산 월: 계약 원본 첫 줄 입고일자 "2026-10-01" 기준
+	first, err := time.Parse("2006-01-02", contract[0].Date)
+	if err != nil {
+		log.Fatalf("입고일자 형식 오류: %q", contract[0].Date)
+	}
+	lastDay := time.Date(first.Year(), first.Month()+1, 0, 0, 0, 0, 0, time.Local).Day() // 다음 달 0일 = 이번 달 마지막 날
+
+	// 결과 폴더: 계약 원본 옆에 "결산서_2026-10"
+	outDir := filepath.Join(filepath.Dir(contractPath), "결산서_"+first.Format("2006-01"))
+	if err := os.MkdirAll(outDir, 0755); err != nil {
+		log.Fatal(err)
+	}
+
+	paste := filepath.Join(outDir, "결산서_붙여넣기.xlsx")
+	if err := writeSettlementPasteFile(paste, sheets); err != nil {
 		log.Fatalf("저장 실패: %v", err)
 	}
-	fmt.Printf("\n완료: %s\n", out)
+	fmt.Printf("\n저장: %s\n", paste)
+
+	// 양식 폴더를 줬으면 양식 4개도 채움
+	if templateDir == "" {
+		return
+	}
+	for _, s := range sheets {
+		tpl, err := findSettlementTemplate(templateDir, s.Name)
+		if err != nil {
+			log.Fatal(err)
+		}
+		// "26. 10월 결산자료(계약).xlsx" → "26. 11월 결산자료(계약).xlsx"
+		name := settlementFileRe.ReplaceAllString(filepath.Base(tpl), first.Format("06")+". "+fmt.Sprint(int(first.Month()))+"월")
+		out := filepath.Join(outDir, name)
+		if err := fillSettlementTemplate(tpl, out, s, int(first.Month()), lastDay); err != nil {
+			log.Fatalf("%s 저장 실패: %v", name, err)
+		}
+		fmt.Printf("저장: %s (%d건)\n", out, len(s.Rows))
+	}
 }
