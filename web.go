@@ -3,9 +3,9 @@ package main
 import (
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -17,6 +17,11 @@ import (
 //
 //go:embed web
 var webFiles embed.FS
+
+// 빌드할 때의 config.json을 exe 안에 같이 넣는다. 다른 PC에서 처음 실행하면 이것으로 설정 파일을 만듦
+//
+//go:embed config.json
+var defaultConfig []byte
 
 // appDir: 설정 파일과 결과 폴더를 둘 기준 폴더.
 // 지금 폴더에 config.json이 있으면 지금 폴더(go run으로 개발할 때), 없으면 exe가 있는 폴더
@@ -37,10 +42,19 @@ func appDir() string {
 func runWeb() {
 	dir := appDir()
 
+	// 처음 실행이면(설정 파일이 없으면) 기본 설정 파일을 만듦
+	created, err := ensureConfig(filepath.Join(dir, "config.json"))
+	if err != nil {
+		fatal("설정 파일을 만들지 못했습니다 (쓰기 권한이 있는 폴더로 옮겨 주세요)", err)
+	}
+	if created {
+		fmt.Println("처음 실행: 기본 설정 파일을 만들었습니다 →", filepath.Join(dir, "config.json"))
+	}
+
 	// 127.0.0.1:0 = 이 PC에서만 접속 가능 + 비어 있는 포트를 자동으로 고름
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		log.Fatal(err)
+		fatal("서버를 켜지 못했습니다", err)
 	}
 	url := fmt.Sprintf("http://%s/", listener.Addr().String())
 
@@ -49,7 +63,7 @@ func runWeb() {
 	// 화면 파일 (web/index.html 등)
 	static, err := fs.Sub(webFiles, "web")
 	if err != nil {
-		log.Fatal(err)
+		fatal("화면 파일을 읽지 못했습니다", err)
 	}
 	mux.Handle("/", http.FileServer(http.FS(static)))
 
@@ -77,7 +91,29 @@ func runWeb() {
 	fmt.Println("이 창을 닫으면 프로그램이 종료됩니다.")
 	openBrowser(url)
 
-	log.Fatal(http.Serve(listener, mux))
+	fatal("서버가 멈췄습니다", http.Serve(listener, mux))
+}
+
+// ensureConfig: 설정 파일이 없으면 exe에 들어 있는 기본 설정으로 만든다. 만들었으면 true
+func ensureConfig(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return false, nil // 이미 있음
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		return false, err
+	}
+	return true, os.WriteFile(path, defaultConfig, 0644)
+}
+
+// fatal: 오류를 보여 주고 Enter를 누를 때까지 기다렸다가 끝냄
+// (exe를 더블클릭해서 띄운 창은 바로 닫히면 오류를 읽을 수 없으므로)
+func fatal(msg string, err error) {
+	fmt.Println("오류:", msg)
+	fmt.Println(err)
+	fmt.Println("\nEnter를 누르면 창이 닫힙니다.")
+	fmt.Scanln()
+	os.Exit(1)
 }
 
 // writeJSON: 값을 JSON으로 바꿔서 응답
