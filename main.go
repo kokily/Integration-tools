@@ -11,7 +11,8 @@ import (
 
 const usage = `사용법:
   go run . 발주서 <웰스토리 원본.xlsx>
-  go run . 결산서 <계약.xls> <비계약.xls> [지난달 결산자료 폴더]`
+  go run . 결산서 <계약.xls> <비계약.xls> [지난달 결산자료 폴더]
+  go run . 소모품 <현재고현황(창고별).xls> <지난 소모품 결산 파일.xlsx>`
 
 func main() {
 	if len(os.Args) < 2 {
@@ -39,6 +40,11 @@ func main() {
 			templateDir = os.Args[4]
 		}
 		runSettlement(os.Args[2], os.Args[3], templateDir, cfg)
+	case "소모품":
+		if len(os.Args) != 4 {
+			log.Fatal(usage)
+		}
+		runExpendables(os.Args[2], os.Args[3], cfg)
 	default:
 		log.Fatalf("알 수 없는 기능: %s\n%s", os.Args[1], usage)
 	}
@@ -159,4 +165,42 @@ func runSettlement(contractPath, nonContractPath, templateDir string, cfg *Confi
 		}
 		fmt.Printf("저장: %s (%d건)\n", out, len(s.Rows))
 	}
+}
+
+// runExpendables: ESP 현재고현황(창고별) → 소모품 결산 (지난 결과 파일을 양식으로 채움)
+func runExpendables(srcPath, templatePath string, cfg *Config) {
+	rows, err := readInventory(srcPath)
+	if err != nil {
+		log.Fatalf("%s: %v", srcPath, err)
+	}
+
+	data, warnings := buildExpendables(rows, cfg.Expendables)
+	for _, w := range warnings {
+		fmt.Println("⚠", w)
+	}
+
+	// 결과 폴더: 원본 옆에 "소모품결산_2026-11-05" (실행한 날짜), 파일 이름은 양식 이름 그대로
+	outDir := filepath.Join(filepath.Dir(srcPath), "소모품결산_"+time.Now().Format("2006-01-02"))
+	if err := os.MkdirAll(outDir, 0755); err != nil {
+		log.Fatal(err)
+	}
+	out := filepath.Join(outDir, filepath.Base(templatePath))
+
+	tplWarnings, err := fillExpendablesTemplate(templatePath, out, data, cfg.Expendables)
+	if err != nil {
+		log.Fatalf("저장 실패: %v", err)
+	}
+	for _, w := range tplWarnings {
+		fmt.Println("⚠", w)
+	}
+
+	var total int64
+	count := 0
+	for _, rs := range data {
+		for _, r := range rs {
+			total += r.Amount
+		}
+		count += len(rs)
+	}
+	fmt.Printf("\n원본 %d줄 → 결산 품목 %d개, 재고금액 합계 %d\n저장: %s\n", len(rows), count, total, out)
 }

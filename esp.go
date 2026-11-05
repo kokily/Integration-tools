@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"golang.org/x/net/html"
@@ -58,7 +59,11 @@ func readHTMLTable(path string) ([][]string, error) {
 			var row []string
 			for c := n.FirstChild; c != nil; c = c.NextSibling {
 				if c.Type == html.ElementNode && (c.Data == "td" || c.Data == "th") {
-					row = append(row, strings.TrimSpace(textOf(c)))
+					row = append(row, cellText(c))
+					// colspan="2"처럼 여러 칸을 차지하는 셀은 남는 칸을 빈 값으로 채워 열 위치를 맞춤
+					for i := 1; i < colspan(c); i++ {
+						row = append(row, "")
+					}
 				}
 			}
 			rows = append(rows, row)
@@ -70,6 +75,26 @@ func readHTMLTable(path string) ([][]string, error) {
 	}
 	walk(doc)
 	return rows, nil
+}
+
+// lineBreakRemover: 셀 글자 안의 줄바꿈 제거 (예전에 엑셀로 다시 저장할 때도 없어졌음)
+var lineBreakRemover = strings.NewReplacer("\r", "", "\n", "")
+
+// cellText: <td> 안의 글자에서 줄바꿈을 지우고 앞뒤 공백을 정리
+func cellText(n *html.Node) string {
+	return strings.TrimSpace(lineBreakRemover.Replace(textOf(n)))
+}
+
+// colspan: <td colspan="N">의 N (없거나 잘못된 값이면 1)
+func colspan(n *html.Node) int {
+	for _, a := range n.Attr {
+		if a.Key == "colspan" {
+			if v, err := strconv.Atoi(a.Val); err == nil && v > 1 {
+				return v
+			}
+		}
+	}
+	return 1
 }
 
 // textOf: 요소 안의 글자를 모두 이어 붙임
