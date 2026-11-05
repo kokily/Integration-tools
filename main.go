@@ -8,17 +8,39 @@ import (
 	"strings"
 )
 
+const usage = `사용법:
+  go run . 발주서 <웰스토리 원본.xlsx>
+  go run . 결산서 <계약.xls> <비계약.xls>`
+
 func main() {
 	if len(os.Args) < 2 {
-		log.Fatal("사용법: go run . <원본파일.xlsx>")
+		log.Fatal(usage)
 	}
-	src := os.Args[1]
 
 	cfg, err := loadConfig("config.json")
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	// os.Args[1] = 기능 이름, os.Args[2:] = 그 기능에 넘길 파일들
+	switch os.Args[1] {
+	case "발주서":
+		if len(os.Args) != 3 {
+			log.Fatal(usage)
+		}
+		runOrder(os.Args[2], cfg)
+	case "결산서":
+		if len(os.Args) != 4 {
+			log.Fatal(usage)
+		}
+		runSettlement(os.Args[2], os.Args[3], cfg)
+	default:
+		log.Fatalf("알 수 없는 기능: %s\n%s", os.Args[1], usage)
+	}
+}
+
+// runOrder: 웰스토리 발주서 → 사업장별 EPS 업로드 파일
+func runOrder(src string, cfg *Config) {
 	items, err := readOrder(src)
 	if err != nil {
 		log.Fatal(err)
@@ -67,4 +89,40 @@ func main() {
 	}
 
 	fmt.Printf("\n완료: %s 에 업로드 파일 %d개 + 확인용_전체.xlsx\n", outDir, len(groups))
+}
+
+// runSettlement: ESP 기간별구매현황(계약/비계약) → 결산서 붙여넣기용 파일
+func runSettlement(contractPath, nonContractPath string, cfg *Config) {
+	contract, err := readESP(contractPath)
+	if err != nil {
+		log.Fatalf("%s: %v", contractPath, err)
+	}
+	nonContract, err := readESP(nonContractPath)
+	if err != nil {
+		log.Fatalf("%s: %v", nonContractPath, err)
+	}
+	if len(contract) == 0 {
+		log.Fatal("계약 원본에 품목이 없습니다")
+	}
+
+	sheets, err := buildSettlement(contract, nonContract, cfg.Settlement)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, s := range sheets {
+		var sum float64
+		for _, r := range s.Rows {
+			sum += r.Amount
+		}
+		fmt.Printf("%-6s %4d건  금액 합계 %.0f\n", s.Name, len(s.Rows), sum)
+	}
+
+	// 파일 이름의 월: 계약 원본 첫 줄 입고일자 "2026-10-01" → "2026-10"
+	month := contract[0].Date[:7]
+	out := filepath.Join(filepath.Dir(contractPath), "결산서_붙여넣기_"+month+".xlsx")
+	if err := writeSettlementPasteFile(out, sheets); err != nil {
+		log.Fatalf("저장 실패: %v", err)
+	}
+	fmt.Printf("\n완료: %s\n", out)
 }

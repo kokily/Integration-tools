@@ -8,12 +8,20 @@ import (
 
 type Config struct {
 	WelstoryOrder WelstoryOrderConfig `json:"welstoryOrder"`
+	Settlement    SettlementConfig    `json:"settlement"`
 }
 
 type WelstoryOrderConfig struct {
 	Sites      []string          `json:"sites"`
 	Contracts  []string          `json:"contracts"`
 	VendorName map[string]string `json:"vendorName"`
+}
+
+// SettlementConfig: 결산서 설정
+type SettlementConfig struct {
+	EmployeeSite string            `json:"employeeSite"` // 직원 파일로 나눌 현장명 글자
+	RemoveSuffix string            `json:"removeSuffix"` // 현장명에서 떼어 낼 글자
+	PlaceMap     map[string]string `json:"placeMap"`     // 현장명 → 납품장소
 }
 
 func loadConfig(path string) (*Config, error) {
