@@ -148,6 +148,25 @@
       color: var(--text);
     }
 
+    .drop.optional {
+      padding: 18px 16px;
+    }
+
+    .drops {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .drops .drop {
+      margin: 16px 0 0;
+    }
+
+    .template-info {
+      font-size: 13px;
+      margin: 0 0 16px;
+    }
+
     button.primary {
       background: var(--accent);
       color: #fff;
@@ -248,15 +267,61 @@
     </section>
     <section id="settlement">
       <h2>결산서</h2>
-      <p class="muted">준비 중입니다.</p>
+      <p class="muted">ESP 기간별구매현황(계약, 비계약)을 올리면 붙여넣기용 파일과 결산자료 4개를 만듭니다.</p>
+      <form class="job" data-job="settlement">
+        <div class="drops">
+          <label class="drop">
+            <span class="label">계약 원본</span>
+            <span class="name">계약.xls</span>
+            <input type="file" name="contract" accept=".xls,.xlsx,.html,.htm" required>
+          </label>
+          <label class="drop">
+            <span class="label">비계약 원본</span>
+            <span class="name">비계약.xls</span>
+            <input type="file" name="noncontract" accept=".xls,.xlsx,.html,.htm" required>
+          </label>
+        </div>
+        <label class="drop optional">
+          <span class="label">결산자료 양식 (선택, 4개)</span>
+          <span class="name">비워 두면 보관된 양식을 씁니다. 양식을 바꿀 때만 4개를 함께 올리세요</span>
+          <input type="file" name="templates" accept=".xlsx" multiple>
+        </label>
+        <p class="template-info muted" data-template="settlement"></p>
+        <button type="submit" class="primary">변환 실행</button>
+      </form>
+      <div class="result"></div>
     </section>
     <section id="expendables">
       <h2>소모품 결산</h2>
-      <p class="muted">준비 중입니다.</p>
+      <p class="muted">ESP 현재고현황(창고별)을 올리면 창고별 소모품 결산 파일을 만듭니다.</p>
+      <form class="job" data-job="expendables">
+        <label class="drop">
+          <span class="label">현재고현황(창고별) 원본</span>
+          <span class="name">여기에 끌어다 놓거나 눌러서 선택하세요 (.xls)</span>
+          <input type="file" name="src" accept=".xls,.xlsx,.html,.htm" required>
+        </label>
+        <label class="drop optional">
+          <span class="label">소모품 결산 양식 (선택)</span>
+          <span class="name">비워 두면 보관된 양식을 씁니다. 처음이거나 양식을 바꿀 때만 올리세요</span>
+          <input type="file" name="template" accept=".xlsx">
+        </label>
+        <p class="template-info muted" data-template="expendables"></p>
+        <button type="submit" class="primary">변환 실행</button>
+      </form>
+      <div class="result"></div>
     </section>
     <section id="vendors">
       <h2>거래처별 변환</h2>
-      <p class="muted">준비 중입니다.</p>
+      <p class="muted">ESP 기간별구매현황을 올리면 웰스토리를 뺀 거래처별 시트와 품목별 요약표를 만듭니다.</p>
+      <form class="job" data-job="vendors">
+        <label class="drop">
+          <span class="label">기간별구매현황 원본</span>
+          <span class="name">여기에 끌어다 놓거나 눌러서 선택하세요 (.xls)</span>
+          <input type="file" name="src" accept=".xls,.xlsx,.html,.htm" required>
+        </label>
+        <button type="submit" class="primary">변환 실행</button>
+      </form>
+      <div class="result"></div>
     </section>
     <section id="settings">
       <h2>설정</h2>
@@ -311,13 +376,33 @@
       var hint = name.textContent;
       input.addEventListener("change", function () {
         var chosen = input.files.length > 0;
-        name.textContent = chosen ? input.files[0].name : hint;
+        var names = Array.from(input.files).map(function (f) { return f.name; });
+        name.textContent = chosen ? names.join(", ") : hint;
         drop.classList.toggle("chosen", chosen);
       });
       input.addEventListener("dragenter", function () { drop.classList.add("dragover"); });
       input.addEventListener("dragleave", function () { drop.classList.remove("dragover"); });
       input.addEventListener("drop", function () { drop.classList.remove("dragover"); });
     });
+
+    // 보관된 양식 표시: /api/templates 를 불러서 결산서·소모품 탭에 표시
+    function loadTemplates() {
+      fetch("/api/templates")
+        .then(function (res) { return res.json(); })
+        .then(function (t) {
+          document.querySelectorAll(".template-info").forEach(function (p) {
+            var info = t[p.dataset.template];
+            if (!info || !info.files || info.files.length === 0) {
+              p.className = "template-info error";
+              p.textContent = "보관된 양식이 없습니다. 처음 한 번은 양식을 같이 올려 주세요.";
+              return;
+            }
+            p.className = "template-info muted";
+            p.textContent = "보관된 양식 (" + info.modified + "): " + info.files.join(", ");
+          });
+        });
+    }
+    loadTemplates();
 
     // showResult: 서버가 돌려준 실행 결과를 화면에 그림
     function showResult(box, data) {
@@ -371,6 +456,7 @@
           .finally(function () {
             submit.disabled = false;
             submit.textContent = "변환 실행";
+            loadTemplates(); // 양식이 새로 보관됐을 수 있으니 다시 표시
           });
       });
     });
