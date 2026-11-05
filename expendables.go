@@ -200,10 +200,10 @@ func buildExpendables(rows []InventoryRow, cfg ExpendablesConfig) (map[string][]
 
 	var warnings []string
 	for _, w := range unknownOrder {
-		warnings = append(warnings, fmt.Sprintf("설정에 없는 창고: %s (품목 %d개) → 결산에서 빠짐. config.json expendables.warehouses에 추가하세요", w, unknown[w]))
+		warnings = append(warnings, fmt.Sprintf("설정에 없는 창고: %s (품목 %d개) → 결산에서 빠짐. 아래 [설정에 추가]나 설정 탭 '창고 매핑'에서 추가하세요", w, unknown[w]))
 	}
 	for year, n := range missingRate {
-		warnings = append(warnings, fmt.Sprintf("%s년 낙찰률이 설정에 없습니다 (품목 %d개는 100%%로 계산). config.json expendables.rates에 \"%s\"를 추가하세요", year, n, year))
+		warnings = append(warnings, fmt.Sprintf("%s년 낙찰률이 설정에 없습니다 (품목 %d개는 100%%로 계산). 아래 [설정에 추가]나 설정 탭 '낙찰률'에서 추가하세요", year, n))
 	}
 	return result, warnings
 }

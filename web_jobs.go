@@ -24,6 +24,7 @@ type jobResponse struct {
 	Warnings []string `json:"warnings"`
 	OutDir   string   `json:"outDir"`
 	Files    []string `json:"files"` // 만든 파일 이름
+	Fixes    []Fix    `json:"fixes"` // [설정에 추가] 대상
 }
 
 // uploads: 입력 칸 이름 → 그 칸으로 올라온 파일들의 임시 저장 경로 (여러 개 올릴 수 있는 칸도 있음)
@@ -212,7 +213,7 @@ func jobHandler(dir, outRoot string, job webJob) http.HandlerFunc {
 			return
 		}
 
-		resp := jobResponse{OK: true, Lines: rep.Lines, Warnings: rep.Warnings, OutDir: rep.OutDir}
+		resp := jobResponse{OK: true, Lines: rep.Lines, Warnings: rep.Warnings, OutDir: rep.OutDir, Fixes: rep.Fixes}
 		for _, f := range rep.Files {
 			resp.Files = append(resp.Files, filepath.Base(f))
 		}

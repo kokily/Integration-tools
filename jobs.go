@@ -15,6 +15,23 @@ type Report struct {
 	Warnings []string // 확인이 필요한 내용 (예: "설정에 없는 사업장: ○○○")
 	OutDir   string   // 결과가 저장된 폴더
 	Files    []string // 만든 파일 (전체 경로)
+	Fixes    []Fix    // 경고 중 설정 화면에서 바로 추가할 수 있는 항목
+}
+
+// Fix: 설정에 없어서 경고가 난 항목. 화면의 [설정에 추가] 버튼에 쓴다
+type Fix struct {
+	Kind  string `json:"kind"`  // site(발주서 사업장), contract(발주서 계약구분), warehouse(소모품 창고), rate(소모품 낙찰률 연도)
+	Value string `json:"value"` // 추가할 이름 (사업장 이름, 창고 이름, 연도 2자리)
+}
+
+// addFix: 같은 항목은 한 번만 넣음
+func (r *Report) addFix(kind, value string) {
+	for _, f := range r.Fixes {
+		if f.Kind == kind && f.Value == value {
+			return
+		}
+	}
+	r.Fixes = append(r.Fixes, Fix{Kind: kind, Value: value})
 }
 
 // Linef: 진행 내용 한 줄 추가 (fmt.Printf와 같은 모양으로 씀)
@@ -51,6 +68,15 @@ func RunOrder(src, outRoot string, cfg *Config) (*Report, error) {
 
 	groups, warnings := groupOrder(items, cfg.WelstoryOrder)
 	rep.Warnings = append(rep.Warnings, warnings...)
+
+	for _, g := range groups { // 설정에 없는 사업장·계약구분은 [설정에 추가] 대상
+		if indexOf(cfg.WelstoryOrder.Sites, g.Site) == len(cfg.WelstoryOrder.Sites) {
+			rep.addFix("site", g.Site)
+		}
+		if indexOf(cfg.WelstoryOrder.Contracts, g.Contract) == len(cfg.WelstoryOrder.Contracts) {
+			rep.addFix("contract", g.Contract)
+		}
+	}
 
 	rep.OutDir = filepath.Join(outRoot, "발주서_"+strings.ReplaceAll(items[0].Date, "/", ""))
 	if err := os.MkdirAll(rep.OutDir, 0755); err != nil {
@@ -165,6 +191,8 @@ func RunExpendables(srcPath, templatePath, outRoot string, cfg *Config) (*Report
 	data, warnings := buildExpendables(rows, cfg.Expendables)
 	rep.Warnings = append(rep.Warnings, warnings...)
 
+	addExpendablesFixes(rep, rows, cfg.Expendables)
+
 	rep.OutDir = filepath.Join(outRoot, "소모품결산_"+time.Now().Format("2006-01-02"))
 	if err := os.MkdirAll(rep.OutDir, 0755); err != nil {
 		return nil, err
@@ -228,4 +256,32 @@ func RunVendors(srcPath, outRoot string, cfg *Config) (*Report, error) {
 	rep.Files = append(rep.Files, out)
 	rep.Linef("저장: %s (시트 %d개)", filepath.Base(out), len(sheets))
 	return rep, nil
+}
+
+// addExpendablesFixes: 소모품에서 설정에 없는 창고와 낙찰률 없는 연도를 [설정에 추가] 대상으로 기록
+// (buildExpendables가 경고 문구를 만드는 기준과 같음)
+func addExpendablesFixes(rep *Report, rows []InventoryRow, cfg ExpendablesConfig) {
+	sheetOf := map[string]string{}
+	for sheet, whs := range cfg.Warehouses {
+		for _, w := range whs {
+			sheetOf[w] = sheet
+		}
+	}
+	excluded := map[string]bool{}
+	for _, w := range cfg.Exclude {
+		excluded[w] = true
+	}
+	for _, it := range rows {
+		if excluded[it.Warehouse] || (it.Opening == 0 && it.In == 0 && it.Out == 0 && it.Stock == 0) {
+			continue
+		}
+		sheet, ok := sheetOf[it.Warehouse]
+		if !ok {
+			rep.addFix("warehouse", it.Warehouse)
+			continue
+		}
+		if _, missing := bidRate(sheet, it.Code, cfg.Rates); missing != "" {
+			rep.addFix("rate", missing)
+		}
+	}
 }

@@ -69,6 +69,9 @@ func runWeb() {
 	// 기능 실행(/api/run/○○)과 결과 폴더 열기(/api/open)
 	registerJobHandlers(mux, dir)
 
+	// 설정 읽기·저장(/api/config)
+	registerConfigHandlers(mux, dir)
+
 	fmt.Println("통합 업무 도구가 실행 중입니다.")
 	fmt.Println("브라우저 주소:", url)
 	fmt.Println("이 창을 닫으면 프로그램이 종료됩니다.")
