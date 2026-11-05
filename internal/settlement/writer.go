@@ -1,18 +1,12 @@
-package main
+package settlement
 
 import (
 	"fmt"
 
 	"github.com/xuri/excelize/v2"
-)
 
-// textOrNil: 빈 글자는 진짜 빈 칸(nil)으로 → 붙여넣었을 때 양식 칸이 비어 있게
-func textOrNil(s string) interface{} {
-	if s == "" {
-		return nil
-	}
-	return s
-}
+	"integration-tools/internal/excel"
+)
 
 // writeSettlementPasteFile: 결과 파일별 시트(A~J열 값만) + 요약 시트
 func writeSettlementPasteFile(path string, sheets []SettlementSheet) error {
@@ -28,8 +22,8 @@ func writeSettlementPasteFile(path string, sheets []SettlementSheet) error {
 
 		for r, row := range s.Rows {
 			values := []interface{}{
-				r + 1, row.Date, row.Place, textOrNil(row.Name), textOrNil(row.Spec),
-				row.Tax, textOrNil(row.Unit), row.Qty, row.Price, row.Amount,
+				r + 1, row.Date, row.Place, excel.TextOrNil(row.Name), excel.TextOrNil(row.Spec),
+				row.Tax, excel.TextOrNil(row.Unit), row.Qty, row.Price, row.Amount,
 			}
 			cellRef, _ := excelize.CoordinatesToCellName(1, r+1)
 			if err := f.SetSheetRow(s.Name, cellRef, &values); err != nil {

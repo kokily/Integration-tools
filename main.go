@@ -1,11 +1,25 @@
 package main
 
 import (
+	_ "embed"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+
+	"integration-tools/internal/config"
+	"integration-tools/internal/expendables"
+	"integration-tools/internal/order"
+	"integration-tools/internal/report"
+	"integration-tools/internal/settlement"
+	"integration-tools/internal/vendors"
+	"integration-tools/internal/web"
 )
+
+// 빌드할 때의 config.json을 exe 안에 같이 넣는다. 다른 PC에서 처음 실행하면 이것으로 설정 파일을 만듦
+//
+//go:embed config.json
+var defaultConfig []byte
 
 const usage = `사용법:
   go run . 발주서 <웰스토리 원본.xlsx>
@@ -17,24 +31,24 @@ const usage = `사용법:
 // 기능 이름을 주면 터미널 모드 (결과는 원본 파일이 있는 폴더에 저장)
 func main() {
 	if len(os.Args) < 2 {
-		runWeb()
+		web.Run(defaultConfig)
 		return
 	}
 
-	cfg, err := loadConfig("config.json")
+	cfg, err := config.Load("config.json")
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	args := os.Args[2:] // 기능 이름 뒤에 오는 파일들
-	var rep *Report
+	var rep *report.Report
 
 	switch os.Args[1] {
 	case "발주서":
 		if len(args) != 1 {
 			log.Fatal(usage)
 		}
-		rep, err = RunOrder(args[0], filepath.Dir(args[0]), cfg)
+		rep, err = order.Run(args[0], filepath.Dir(args[0]), cfg)
 	case "결산서":
 		if len(args) != 2 && len(args) != 3 {
 			log.Fatal(usage)
@@ -43,17 +57,17 @@ func main() {
 		if len(args) == 3 {
 			templateDir = args[2]
 		}
-		rep, err = RunSettlement(args[0], args[1], templateDir, filepath.Dir(args[0]), cfg)
+		rep, err = settlement.Run(args[0], args[1], templateDir, filepath.Dir(args[0]), cfg)
 	case "소모품":
 		if len(args) != 2 {
 			log.Fatal(usage)
 		}
-		rep, err = RunExpendables(args[0], args[1], filepath.Dir(args[0]), cfg)
+		rep, err = expendables.Run(args[0], args[1], filepath.Dir(args[0]), cfg)
 	case "거래처별":
 		if len(args) != 1 {
 			log.Fatal(usage)
 		}
-		rep, err = RunVendors(args[0], filepath.Dir(args[0]), cfg)
+		rep, err = vendors.Run(args[0], filepath.Dir(args[0]), cfg)
 	default:
 		log.Fatalf("알 수 없는 기능: %s\n%s", os.Args[1], usage)
 	}
@@ -65,7 +79,7 @@ func main() {
 }
 
 // printReport: 실행 결과를 터미널에 출력
-func printReport(rep *Report) {
+func printReport(rep *report.Report) {
 	for _, w := range rep.Warnings {
 		fmt.Println("⚠", w)
 	}

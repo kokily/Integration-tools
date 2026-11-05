@@ -1,9 +1,11 @@
-package main
+package order
 
 import (
 	"fmt"
 	"sort"
 	"time"
+
+	"integration-tools/internal/config"
 )
 
 // 면/과 순서는 항상 고정
@@ -41,7 +43,7 @@ func indexOf(list []string, v string) int {
 
 // groupOrder: 품목을 사업장-계약구분-면과로 묶고 설정 순서대로 정렬.
 // 설정에 없는 사업장/계약구분은 경고 목록으로 돌려줌
-func groupOrder(items []OrderItem, cfg WelstoryOrderConfig) ([]OrderGroup, []string) {
+func groupOrder(items []OrderItem, cfg config.WelstoryOrderConfig) ([]OrderGroup, []string) {
 	byName := map[string]*OrderGroup{}
 	for _, it := range items {
 		g := OrderGroup{Site: it.Site, Contract: it.Contract, Tax: taxType(it)}

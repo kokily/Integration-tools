@@ -1,4 +1,4 @@
-package main
+package web
 
 import (
 	"encoding/json"
@@ -11,6 +11,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"integration-tools/internal/config"
+	"integration-tools/internal/expendables"
+	"integration-tools/internal/order"
+	"integration-tools/internal/report"
+	"integration-tools/internal/settlement"
+	"integration-tools/internal/vendors"
 )
 
 // 한 번에 올릴 수 있는 파일 크기 합계 (현재고현황이 16MB 정도라 넉넉하게)
@@ -18,13 +25,13 @@ const maxUploadBytes = 200 << 20 // 200MB
 
 // jobResponse: 화면으로 돌려보내는 실행 결과
 type jobResponse struct {
-	OK       bool     `json:"ok"`
-	Error    string   `json:"error,omitempty"`
-	Lines    []string `json:"lines"`
-	Warnings []string `json:"warnings"`
-	OutDir   string   `json:"outDir"`
-	Files    []string `json:"files"` // 만든 파일 이름
-	Fixes    []Fix    `json:"fixes"` // [설정에 추가] 대상
+	OK       bool         `json:"ok"`
+	Error    string       `json:"error,omitempty"`
+	Lines    []string     `json:"lines"`
+	Warnings []string     `json:"warnings"`
+	OutDir   string       `json:"outDir"`
+	Files    []string     `json:"files"` // 만든 파일 이름
+	Fixes    []report.Fix `json:"fixes"` // [설정에 추가] 대상
 }
 
 // uploads: 입력 칸 이름 → 그 칸으로 올라온 파일들의 임시 저장 경로 (여러 개 올릴 수 있는 칸도 있음)
@@ -42,7 +49,7 @@ func (u uploads) first(field string) string {
 type webJob struct {
 	folder   string            // 결과 폴더 안의 하위 폴더 이름
 	required map[string]string // 꼭 올려야 하는 입력 칸 이름 → 화면에 보이는 이름
-	run      func(files uploads, outRoot string, cfg *Config) (*Report, error)
+	run      func(files uploads, outRoot string, cfg *config.Config) (*report.Report, error)
 }
 
 // registerJobHandlers: /api/run/○○ (기능 실행), /api/templates (보관된 양식), /api/open (결과 폴더 열기)
@@ -55,29 +62,29 @@ func registerJobHandlers(mux *http.ServeMux, dir string) {
 		"order": {
 			folder:   "발주서",
 			required: map[string]string{"src": "웰스토리 원본 파일"},
-			run: func(f uploads, out string, cfg *Config) (*Report, error) {
-				return RunOrder(f.first("src"), out, cfg)
+			run: func(f uploads, out string, cfg *config.Config) (*report.Report, error) {
+				return order.Run(f.first("src"), out, cfg)
 			},
 		},
 		"settlement": {
 			folder:   "결산서",
 			required: map[string]string{"contract": "계약 원본", "noncontract": "비계약 원본"},
-			run: func(f uploads, out string, cfg *Config) (*Report, error) {
+			run: func(f uploads, out string, cfg *config.Config) (*report.Report, error) {
 				return runSettlementWithTemplates(f, out, settlementTpl, cfg)
 			},
 		},
 		"expendables": {
 			folder:   "소모품",
 			required: map[string]string{"src": "현재고현황(창고별) 원본"},
-			run: func(f uploads, out string, cfg *Config) (*Report, error) {
+			run: func(f uploads, out string, cfg *config.Config) (*report.Report, error) {
 				return runExpendablesWithTemplate(f, out, expendablesTpl, cfg)
 			},
 		},
 		"vendors": {
 			folder:   "거래처별",
 			required: map[string]string{"src": "기간별구매현황 원본"},
-			run: func(f uploads, out string, cfg *Config) (*Report, error) {
-				return RunVendors(f.first("src"), out, cfg)
+			run: func(f uploads, out string, cfg *config.Config) (*report.Report, error) {
+				return vendors.Run(f.first("src"), out, cfg)
 			},
 		},
 	}
@@ -97,7 +104,7 @@ func registerJobHandlers(mux *http.ServeMux, dir string) {
 
 // runSettlementWithTemplates: 결산서 실행. 양식을 올렸으면 보관 양식을 그것으로 바꾸고,
 // 실행 뒤에는 이번 결과 4개를 다음 달 양식으로 보관한다
-func runSettlementWithTemplates(f uploads, out, tplDir string, cfg *Config) (*Report, error) {
+func runSettlementWithTemplates(f uploads, out, tplDir string, cfg *config.Config) (*report.Report, error) {
 	if len(f["templates"]) > 0 {
 		if err := replaceTemplates(tplDir, f["templates"]); err != nil {
 			return nil, fmt.Errorf("양식 보관 실패: %w", err)
@@ -109,7 +116,7 @@ func runSettlementWithTemplates(f uploads, out, tplDir string, cfg *Config) (*Re
 		useTpl = tplDir
 	}
 
-	rep, err := RunSettlement(f.first("contract"), f.first("noncontract"), useTpl, out, cfg)
+	rep, err := settlement.Run(f.first("contract"), f.first("noncontract"), useTpl, out, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +142,7 @@ func runSettlementWithTemplates(f uploads, out, tplDir string, cfg *Config) (*Re
 
 // runExpendablesWithTemplate: 소모품 결산 실행. 양식을 올렸으면 보관 양식을 그것으로 바꾸고,
 // 실행 뒤에는 이번 결과를 다음 양식으로 보관한다
-func runExpendablesWithTemplate(f uploads, out, tplDir string, cfg *Config) (*Report, error) {
+func runExpendablesWithTemplate(f uploads, out, tplDir string, cfg *config.Config) (*report.Report, error) {
 	if tpl := f.first("template"); tpl != "" {
 		if err := replaceTemplates(tplDir, []string{tpl}); err != nil {
 			return nil, fmt.Errorf("양식 보관 실패: %w", err)
@@ -150,7 +157,7 @@ func runExpendablesWithTemplate(f uploads, out, tplDir string, cfg *Config) (*Re
 		return nil, fmt.Errorf("양식 폴더(%s)에 xlsx 파일이 %d개 있습니다. 하나만 남겨 주세요", tplDir, len(stored))
 	}
 
-	rep, err := RunExpendables(f.first("src"), filepath.Join(tplDir, stored[0]), out, cfg)
+	rep, err := expendables.Run(f.first("src"), filepath.Join(tplDir, stored[0]), out, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -201,7 +208,7 @@ func jobHandler(dir, outRoot string, job webJob) http.HandlerFunc {
 		}
 
 		// 설정은 실행할 때마다 새로 읽음 (설정 화면에서 바꾼 내용이 바로 반영되도록)
-		cfg, err := loadConfig(filepath.Join(dir, "config.json"))
+		cfg, err := config.Load(filepath.Join(dir, "config.json"))
 		if err != nil {
 			fail("%v", err)
 			return

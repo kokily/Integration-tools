@@ -1,4 +1,4 @@
-package main
+package vendors
 
 import (
 	"fmt"
@@ -9,22 +9,26 @@ import (
 	"unicode/utf8"
 
 	"github.com/xuri/excelize/v2"
+
+	"integration-tools/internal/config"
+	"integration-tools/internal/esp"
+	"integration-tools/internal/excel"
 )
 
 // VendorSheet: 거래처 시트 하나 분량
 type VendorSheet struct {
-	Name string        // 거래처명 (시트 이름)
-	Rows []PurchaseRow // 원본 순서 그대로
+	Name string            // 거래처명 (시트 이름)
+	Rows []esp.PurchaseRow // 원본 순서 그대로
 }
 
 // buildVendorSheets: 거래처별로 나누고 시트 순서를 정한다 (설정 순서 → 나머지 가나다순)
-func buildVendorSheets(rows []PurchaseRow, cfg VendorsConfig) []VendorSheet {
+func buildVendorSheets(rows []esp.PurchaseRow, cfg config.VendorsConfig) []VendorSheet {
 	excluded := map[string]bool{}
 	for _, v := range cfg.Exclude {
 		excluded[v] = true
 	}
 
-	byVendor := map[string][]PurchaseRow{}
+	byVendor := map[string][]esp.PurchaseRow{}
 	for _, r := range rows {
 		if r.Vendor == "" || excluded[r.Vendor] {
 			continue
@@ -45,7 +49,7 @@ func buildVendorSheets(rows []PurchaseRow, cfg VendorsConfig) []VendorSheet {
 			rest = append(rest, v)
 		}
 	}
-	sort.Slice(rest, func(i, j int) bool { return lessKorean(rest[i], rest[j]) })
+	sort.Slice(rest, func(i, j int) bool { return excel.LessKorean(rest[i], rest[j]) })
 	for _, v := range rest {
 		sheets = append(sheets, VendorSheet{Name: v, Rows: byVendor[v]})
 	}
@@ -222,11 +226,11 @@ func writeVendorFile(path string, sheets []VendorSheet) error {
 //
 // 같은 품번인데 단가가 여러 개면 단가별로 줄을 나누고 수량은 SUMIFS(품번과 단가가 모두 같은 줄)로 구한다.
 // 반환값: 요약표 마지막 행(계), 소수점 서식을 줄 단가 칸 목록
-func writeVendorSummary(f *excelize.File, sheet string, rows []PurchaseRow, headerRow int) (int, []string, error) {
+func writeVendorSummary(f *excelize.File, sheet string, rows []esp.PurchaseRow, headerRow int) (int, []string, error) {
 	dataEnd := len(rows) + 1 // 위 데이터의 마지막 행
 
 	// 품번+단가별로 묶기 (처음 나온 순서). items에는 각 묶음의 첫 줄을 담아 품명·규격·단위·단가를 가져옴
-	var items []PurchaseRow
+	var items []esp.PurchaseRow
 	seen := map[string]bool{}
 	prices := map[string]map[float64]bool{} // 품번 → 단가 종류
 	for _, r := range rows {

@@ -1,4 +1,4 @@
-package main
+package web
 
 import (
 	"embed"
@@ -12,17 +12,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"integration-tools/internal/config"
 )
 
-// web 폴더(index.html 등)를 exe 안에 같이 넣는다. exe 하나만 옮기면 화면도 따라감
+// static 폴더(index.html 등)를 exe 안에 같이 넣는다. exe 하나만 옮기면 화면도 따라감
 //
-//go:embed web
-var webFiles embed.FS
-
-// 빌드할 때의 config.json을 exe 안에 같이 넣는다. 다른 PC에서 처음 실행하면 이것으로 설정 파일을 만듦
-//
-//go:embed config.json
-var defaultConfig []byte
+//go:embed static
+var staticFiles embed.FS
 
 // appDir: 설정 파일과 결과 폴더를 둘 기준 폴더.
 // 지금 폴더에 config.json이 있으면 지금 폴더(go run으로 개발할 때), 없으면 exe가 있는 폴더
@@ -39,12 +36,13 @@ func appDir() string {
 	return filepath.Dir(exe)
 }
 
-// runWeb: 이 PC 안에서만 접속할 수 있는 웹 서버를 켜고 브라우저를 연다
-func runWeb() {
+// Run: 이 PC 안에서만 접속할 수 있는 웹 서버를 켜고 브라우저를 연다.
+// defaultConfig는 설정 파일이 없을 때(처음 실행) 만들 기본 설정
+func Run(defaultConfig []byte) {
 	dir := appDir()
 
 	// 처음 실행이면(설정 파일이 없으면) 기본 설정 파일을 만듦
-	created, err := ensureConfig(filepath.Join(dir, "config.json"))
+	created, err := ensureConfig(filepath.Join(dir, "config.json"), defaultConfig)
 	if err != nil {
 		fatal("설정 파일을 만들지 못했습니다 (쓰기 권한이 있는 폴더로 옮겨 주세요)", err)
 	}
@@ -61,8 +59,8 @@ func runWeb() {
 
 	mux := http.NewServeMux()
 
-	// 화면 파일 (web/index.html 등)
-	static, err := fs.Sub(webFiles, "web")
+	// 화면 파일 (static/index.html 등)
+	static, err := fs.Sub(staticFiles, "static")
 	if err != nil {
 		fatal("화면 파일을 읽지 못했습니다", err)
 	}
@@ -75,7 +73,7 @@ func runWeb() {
 
 	// 상태 확인: 화면이 서버와 연결됐는지, 설정을 어디서 읽는지 보여 줌
 	mux.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
-		_, cfgErr := loadConfig(filepath.Join(dir, "config.json"))
+		_, cfgErr := config.Load(filepath.Join(dir, "config.json"))
 		status := map[string]string{
 			"appDir":    dir,
 			"configErr": "",
@@ -100,8 +98,8 @@ func runWeb() {
 	fatal("서버가 멈췄습니다", http.Serve(listener, mux))
 }
 
-// ensureConfig: 설정 파일이 없으면 exe에 들어 있는 기본 설정으로 만든다. 만들었으면 true
-func ensureConfig(path string) (bool, error) {
+// ensureConfig: 설정 파일이 없으면 기본 설정(data)으로 만든다. 만들었으면 true
+func ensureConfig(path string, data []byte) (bool, error) {
 	_, err := os.Stat(path)
 	if err == nil {
 		return false, nil // 이미 있음
@@ -109,7 +107,7 @@ func ensureConfig(path string) (bool, error) {
 	if !errors.Is(err, fs.ErrNotExist) {
 		return false, err
 	}
-	return true, os.WriteFile(path, defaultConfig, 0644)
+	return true, os.WriteFile(path, data, 0644)
 }
 
 // fatal: 오류를 보여 주고 Enter를 누를 때까지 기다렸다가 끝냄

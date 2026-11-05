@@ -1,12 +1,13 @@
-package main
+package order
 
 import (
 	"fmt"
 	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/xuri/excelize/v2"
+
+	"integration-tools/internal/excel"
 )
 
 // OrderItem: 원본 발주서의 품목 한 줄
@@ -29,23 +30,6 @@ var requiredCols = []string{"사업장명", "일자", "품목코드", "품목명
 
 // "국방컨벤션(양식뷔페/계약)" → 괄호 안의 "양식뷔페", "계약"을 꺼내는 정규식
 var siteRe = regexp.MustCompile(`\(([^/()]+)/([^/()]+)\)\s*$`)
-
-// cell: 행의 i번째 칸 값. 행이 짧아서 칸이 없으면 "" 반환
-func cell(row []string, i int) string {
-	if i < 0 || i >= len(row) {
-		return ""
-	}
-	return strings.TrimSpace(row[i])
-}
-
-// parseNumber: "1,145,300" 같은 문자열을 숫자로. 빈 칸은 0
-func parseNumber(s string) (float64, error) {
-	s = strings.ReplaceAll(strings.TrimSpace(s), ",", "")
-	if s == "" {
-		return 0, nil
-	}
-	return strconv.ParseFloat(s, 64)
-}
 
 // findHeader: "사업장명"과 "품목코드"가 함께 있는 행을 헤더로 보고,
 // 열 이름 → 열 번호 표(map)를 만든다
@@ -95,16 +79,16 @@ func readOrder(path string) ([]OrderItem, error) {
 		row := rows[r]
 
 		// 품목코드가 없으면 소계/합계/페이지번호 줄 → 건너뜀
-		code := cell(row, col["품목코드"])
+		code := excel.Cell(row, col["품목코드"])
 		if code == "" {
 			continue
 		}
 
 		// 사업장명·일자가 있으면 새 그룹 시작, 없으면 위의 값 유지
-		if v := cell(row, col["사업장명"]); v != "" {
+		if v := excel.Cell(row, col["사업장명"]); v != "" {
 			curSite = v
 		}
-		if v := cell(row, col["일자"]); v != "" {
+		if v := excel.Cell(row, col["일자"]); v != "" {
 			curDate = v
 		}
 
@@ -118,9 +102,9 @@ func readOrder(path string) ([]OrderItem, error) {
 			Contract: m[2],
 			Date:     curDate,
 			Code:     code,
-			Name:     cell(row, col["품목명"]),
-			Spec:     cell(row, col["규격"]),
-			Unit:     cell(row, col["단위"]),
+			Name:     excel.Cell(row, col["품목명"]),
+			Spec:     excel.Cell(row, col["규격"]),
+			Unit:     excel.Cell(row, col["단위"]),
 		}
 
 		// 숫자 칸 4개를 한 번에 처리 (값을 넣을 변수의 주소 &item.Qty 등을 넘김)
@@ -134,9 +118,9 @@ func readOrder(path string) ([]OrderItem, error) {
 			{"부가세", &item.VAT},
 		}
 		for _, n := range nums {
-			v, err := parseNumber(cell(row, col[n.name]))
+			v, err := excel.ParseNumber(excel.Cell(row, col[n.name]))
 			if err != nil {
-				return nil, fmt.Errorf("%d행 %s 값이 숫자가 아닙니다: %q", r+1, n.name, cell(row, col[n.name]))
+				return nil, fmt.Errorf("%d행 %s 값이 숫자가 아닙니다: %q", r+1, n.name, excel.Cell(row, col[n.name]))
 			}
 			*n.dst = v
 		}

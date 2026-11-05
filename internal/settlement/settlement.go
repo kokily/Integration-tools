@@ -1,7 +1,9 @@
-package main
+package settlement
 
 import (
 	"fmt"
+	"integration-tools/internal/config"
+	"integration-tools/internal/esp"
 	"strings"
 	"time"
 )
@@ -26,7 +28,7 @@ type SettlementSheet struct {
 }
 
 // toSettlementRow: ESP 한 줄 → 결산서 한 줄
-func toSettlementRow(p PurchaseRow, cfg SettlementConfig) (SettlementRow, error) {
+func toSettlementRow(p esp.PurchaseRow, cfg config.SettlementConfig) (SettlementRow, error) {
 	d, err := time.Parse("2006-01-02", p.Date)
 	if err != nil {
 		return SettlementRow{}, fmt.Errorf("입고일자 형식 오류: %q (%s)", p.Date, p.Name)
@@ -60,13 +62,13 @@ func toSettlementRow(p PurchaseRow, cfg SettlementConfig) (SettlementRow, error)
 }
 
 // buildSettlement: 계약/비계약 원본을 결과 파일 4개 분량으로 나눔 (원본 순서 유지)
-func buildSettlement(contract, nonContract []PurchaseRow, cfg SettlementConfig) ([]SettlementSheet, error) {
+func buildSettlement(contract, nonContract []esp.PurchaseRow, cfg config.SettlementConfig) ([]SettlementSheet, error) {
 	sheets := []SettlementSheet{
 		{Name: "계약"}, {Name: "비계약"}, {Name: "직원계약"}, {Name: "직원비계약"},
 	}
 
 	// add: rows를 변환해서 normal 또는 employee 번호의 시트에 넣음
-	add := func(rows []PurchaseRow, normal, employee int) error {
+	add := func(rows []esp.PurchaseRow, normal, employee int) error {
 		for _, p := range rows {
 			r, err := toSettlementRow(p, cfg)
 			if err != nil {

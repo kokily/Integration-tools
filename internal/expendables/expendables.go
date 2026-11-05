@@ -1,11 +1,14 @@
-package main
+package expendables
 
 import (
 	"fmt"
 	"math"
 	"sort"
 	"strings"
-	"unicode"
+
+	"integration-tools/internal/config"
+	"integration-tools/internal/esp"
+	"integration-tools/internal/excel"
 )
 
 // InventoryRow: ESP 현재고현황(창고별)의 품목 한 줄
@@ -26,7 +29,7 @@ var inventoryRequiredCols = []string{"창고", "품번", "품명", "규격", "�
 
 // readInventory: ESP 현재고현황(창고별) HTML 파일을 읽는다
 func readInventory(path string) ([]InventoryRow, error) {
-	rows, err := readHTMLTable(path)
+	rows, err := esp.ReadTable(path)
 	if err != nil {
 		return nil, err
 	}
@@ -59,16 +62,16 @@ func readInventory(path string) ([]InventoryRow, error) {
 	var result []InventoryRow
 	for r := headerRow + 1; r < len(rows); r++ {
 		row := rows[r]
-		code := cell(row, col["품번"])
+		code := excel.Cell(row, col["품번"])
 		if code == "" { // 헤더 둘째 줄(재고단가/재고금액), [ 합 계 ] 줄
 			continue
 		}
 		it := InventoryRow{
-			Warehouse: cell(row, col["창고"]),
+			Warehouse: excel.Cell(row, col["창고"]),
 			Code:      code,
-			Name:      cell(row, col["품명"]),
-			Spec:      cell(row, col["규격"]),
-			Unit:      cell(row, col["단위"]),
+			Name:      excel.Cell(row, col["품명"]),
+			Spec:      excel.Cell(row, col["규격"]),
+			Unit:      excel.Cell(row, col["단위"]),
 		}
 		nums := []struct {
 			col int
@@ -81,42 +84,15 @@ func readInventory(path string) ([]InventoryRow, error) {
 			{col["①추정금액"], &it.Price}, // ①추정금액 아래 첫 칸이 재고단가
 		}
 		for _, n := range nums {
-			v, err := parseNumber(cell(row, n.col))
+			v, err := excel.ParseNumber(excel.Cell(row, n.col))
 			if err != nil {
-				return nil, fmt.Errorf("%d행 숫자 오류: %q", r+1, cell(row, n.col))
+				return nil, fmt.Errorf("%d행 숫자 오류: %q", r+1, excel.Cell(row, n.col))
 			}
 			*n.dst = v
 		}
 		result = append(result, it)
 	}
 	return result, nil
-}
-
-// charRank: 정렬할 때 글자 종류 순위 (기호·공백 < 숫자 < 한글 < 영문). 기존 앱(Windows 한국어 정렬)과 같은 순서
-func charRank(r rune) int {
-	switch {
-	case unicode.IsDigit(r):
-		return 1
-	case r >= 0xAC00 && r <= 0xD7A3, r >= 0x3131 && r <= 0x318E: // 한글 음절, 자모
-		return 2
-	case r < 128 && unicode.IsLetter(r): // 영문
-		return 3
-	}
-	return 0
-}
-
-// lessKorean: 품명 a가 b보다 앞이면 true
-func lessKorean(a, b string) bool {
-	ra, rb := []rune(a), []rune(b)
-	for i := 0; i < len(ra) && i < len(rb); i++ {
-		if ka, kb := charRank(ra[i]), charRank(rb[i]); ka != kb {
-			return ka < kb
-		}
-		if la, lb := unicode.ToLower(ra[i]), unicode.ToLower(rb[i]); la != lb {
-			return la < lb
-		}
-	}
-	return len(ra) < len(rb)
 }
 
 // roundByFive: 1의 자리가 5 이상이면 올리고, 미만이면 버려서 10원 단위로 (기존 앱 규칙)
@@ -151,7 +127,7 @@ type ExpendableRow struct {
 }
 
 // buildExpendables: 원본을 결과 시트별로 나누고, 정렬하고, 재고금액을 계산한다
-func buildExpendables(rows []InventoryRow, cfg ExpendablesConfig) (map[string][]ExpendableRow, []string) {
+func buildExpendables(rows []InventoryRow, cfg config.ExpendablesConfig) (map[string][]ExpendableRow, []string) {
 	// 원본 창고 → 결과 시트
 	sheetOf := map[string]string{}
 	for sheet, whs := range cfg.Warehouses {
@@ -195,7 +171,7 @@ func buildExpendables(rows []InventoryRow, cfg ExpendablesConfig) (map[string][]
 
 	for sheet := range result {
 		rs := result[sheet]
-		sort.SliceStable(rs, func(i, j int) bool { return lessKorean(rs[i].Name, rs[j].Name) })
+		sort.SliceStable(rs, func(i, j int) bool { return excel.LessKorean(rs[i].Name, rs[j].Name) })
 	}
 
 	var warnings []string

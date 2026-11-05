@@ -1,4 +1,4 @@
-package main
+package excel
 
 import (
 	"archive/zip"
@@ -32,9 +32,9 @@ func normalizeXML(s string) string {
 	return s
 }
 
-// openXLSXNormalized: xlsx를 열기 전에 xl/ 안 XML을 일반 형식으로 정리한 뒤 excelize로 연다.
+// OpenNormalized: xlsx를 열기 전에 xl/ 안 XML을 일반 형식으로 정리한 뒤 excelize로 연다.
 // (한셀로 저장한 파일을 그대로 열면 서식이 빠짐)
-func openXLSXNormalized(path string) (*excelize.File, error) {
+func OpenNormalized(path string) (*excelize.File, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err

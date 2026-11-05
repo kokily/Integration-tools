@@ -1,7 +1,9 @@
-package main
+package expendables
 
 import (
 	"fmt"
+	"integration-tools/internal/config"
+	"integration-tools/internal/excel"
 	"regexp"
 	"strings"
 
@@ -133,7 +135,7 @@ func fitExpendablesSheet(f *excelize.File, sheet string, l expendablesLayout, ro
 		if i < len(rows) {
 			x := rows[i]
 			values = []interface{}{
-				i + 1, warehouse, x.Code, textOrNil(x.Name), textOrNil(x.Spec), textOrNil(x.Unit),
+				i + 1, warehouse, x.Code, excel.TextOrNil(x.Name), excel.TextOrNil(x.Spec), excel.TextOrNil(x.Unit),
 				x.Opening, x.In, x.Out, x.Stock, x.Price, x.Amount,
 			}
 		}
@@ -146,14 +148,14 @@ func fitExpendablesSheet(f *excelize.File, sheet string, l expendablesLayout, ro
 
 	// 3) 빈 줄과 "계" 행을 새 위치에. "계" 수식 범위는 새 데이터 범위로 (예: SUM(J4:J700) → SUM(J4:J124))
 	for c := 1; c <= expendablesLastCol; c++ {
-		if err := writeCell(f, sheet, c, r.total-1, spareTpl.styles[c-1], textOrNil(spareTpl.values[c-1]), ""); err != nil {
+		if err := writeCell(f, sheet, c, r.total-1, spareTpl.styles[c-1], excel.TextOrNil(spareTpl.values[c-1]), ""); err != nil {
 			return sheetRange{}, err
 		}
 		formula := totalTpl.formulas[c-1]
 		if formula != "" {
 			formula = rowRangeRe.ReplaceAllString(formula, fmt.Sprintf("${1}%d:${2}%d", r.first, r.last))
 		}
-		if err := writeCell(f, sheet, c, r.total, totalTpl.styles[c-1], textOrNil(totalTpl.values[c-1]), formula); err != nil {
+		if err := writeCell(f, sheet, c, r.total, totalTpl.styles[c-1], excel.TextOrNil(totalTpl.values[c-1]), formula); err != nil {
 			return sheetRange{}, err
 		}
 	}
@@ -234,8 +236,8 @@ func updateSummarySheet(f *excelize.File, ranges map[string]sheetRange) error {
 
 // fillExpendablesTemplate: 소모품 결산 양식(지난 결과 파일)을 열어 창고 시트를 품목 수에 맞춰 채우고
 // 요약 시트 수식과 인쇄 영역을 맞춘 새 파일을 만든다
-func fillExpendablesTemplate(templatePath, outPath string, data map[string][]ExpendableRow, cfg ExpendablesConfig) ([]string, error) {
-	f, err := openXLSXNormalized(templatePath)
+func fillExpendablesTemplate(templatePath, outPath string, data map[string][]ExpendableRow, cfg config.ExpendablesConfig) ([]string, error) {
+	f, err := excel.OpenNormalized(templatePath)
 	if err != nil {
 		return nil, err
 	}

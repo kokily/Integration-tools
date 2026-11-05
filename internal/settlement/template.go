@@ -1,4 +1,4 @@
-package main
+package settlement
 
 import (
 	"fmt"
@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/xuri/excelize/v2"
+
+	"integration-tools/internal/excel"
 )
 
 // 제목 앞부분 "10월 구매현황[10. 1. ~ 10. 31" 을 찾는 정규식 (뒷부분 ", 일자별, ..."은 그대로 둠)
@@ -77,7 +79,7 @@ func findSettlementLayout(f *excelize.File, sheet string) (settlementLayout, err
 
 // fillSettlementTemplate: 지난달 결산 파일을 양식으로 써서 이번 달 데이터로 채운 새 파일을 만든다
 func fillSettlementTemplate(templatePath, outPath string, s SettlementSheet, month, lastDay int) error {
-	f, err := openXLSXNormalized(templatePath)
+	f, err := excel.OpenNormalized(templatePath)
 	if err != nil {
 		return err
 	}
@@ -122,8 +124,8 @@ func fillSettlementTemplate(templatePath, outPath string, s SettlementSheet, mon
 		if i < len(s.Rows) {
 			r := s.Rows[i]
 			values = []interface{}{
-				i + 1, r.Date, r.Place, textOrNil(r.Name), textOrNil(r.Spec),
-				r.Tax, textOrNil(r.Unit), r.Qty, r.Price, r.Amount,
+				i + 1, r.Date, r.Place, excel.TextOrNil(r.Name), excel.TextOrNil(r.Spec),
+				r.Tax, excel.TextOrNil(r.Unit), r.Qty, r.Price, r.Amount,
 			}
 		}
 		for c, v := range values {

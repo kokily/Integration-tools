@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"encoding/json"
@@ -39,7 +39,8 @@ type VendorsConfig struct {
 	Exclude []string `json:"exclude"` // 시트를 만들지 않을 거래처
 }
 
-func loadConfig(path string) (*Config, error) {
+// Load: 설정 파일(config.json) 읽기
+func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 
 	if err != nil {

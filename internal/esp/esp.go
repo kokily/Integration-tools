@@ -1,4 +1,4 @@
-package main
+package esp
 
 import (
 	"bytes"
@@ -9,6 +9,8 @@ import (
 
 	"golang.org/x/net/html"
 	"golang.org/x/text/encoding/korean"
+
+	"integration-tools/internal/excel"
 )
 
 // PurchaseRow: ESP 기간별구매현황[일자별]의 품목 한 줄
@@ -34,8 +36,8 @@ var espRequiredCols = []string{
 	"금액", "부가세", "합계금액", "거래처명", "현장명", "입고창고",
 }
 
-// readHTMLTable: EUC-KR로 저장된 HTML 파일에서 표의 글자만 꺼내 [행][칸] 목록으로 만든다
-func readHTMLTable(path string) ([][]string, error) {
+// ReadTable: EUC-KR로 저장된 HTML 파일에서 표의 글자만 꺼내 [행][칸] 목록으로 만든다
+func ReadTable(path string) ([][]string, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -110,9 +112,9 @@ func textOf(n *html.Node) string {
 	return sb.String()
 }
 
-// readESP: ESP 기간별구매현황 파일을 읽어서 품목 목록으로 만든다
-func readESP(path string) ([]PurchaseRow, error) {
-	rows, err := readHTMLTable(path)
+// Read: ESP 기간별구매현황 파일을 읽어서 품목 목록으로 만든다
+func Read(path string) ([]PurchaseRow, error) {
+	rows, err := ReadTable(path)
 	if err != nil {
 		return nil, err
 	}
@@ -146,21 +148,21 @@ func readESP(path string) ([]PurchaseRow, error) {
 		row := rows[r]
 
 		// 품번이 없으면 [ 합 계 ] 줄 → 건너뜀
-		code := cell(row, col["품번"])
+		code := excel.Cell(row, col["품번"])
 		if code == "" {
 			continue
 		}
 
 		p := PurchaseRow{
-			Seq:       strings.ReplaceAll(cell(row, col["순번"]), ",", ""),
-			Date:      cell(row, col["입고일자"]),
+			Seq:       strings.ReplaceAll(excel.Cell(row, col["순번"]), ",", ""),
+			Date:      excel.Cell(row, col["입고일자"]),
 			Code:      code,
-			Name:      cell(row, col["품명"]),
-			Spec:      cell(row, col["규격"]),
-			Unit:      cell(row, col["단위"]),
-			Vendor:    cell(row, col["거래처명"]),
-			Site:      cell(row, col["현장명"]),
-			Warehouse: cell(row, col["입고창고"]),
+			Name:      excel.Cell(row, col["품명"]),
+			Spec:      excel.Cell(row, col["규격"]),
+			Unit:      excel.Cell(row, col["단위"]),
+			Vendor:    excel.Cell(row, col["거래처명"]),
+			Site:      excel.Cell(row, col["현장명"]),
+			Warehouse: excel.Cell(row, col["입고창고"]),
 		}
 
 		nums := []struct {
@@ -174,9 +176,9 @@ func readESP(path string) ([]PurchaseRow, error) {
 			{"합계금액", &p.Total},
 		}
 		for _, n := range nums {
-			v, err := parseNumber(cell(row, col[n.name]))
+			v, err := excel.ParseNumber(excel.Cell(row, col[n.name]))
 			if err != nil {
-				return nil, fmt.Errorf("%d행 %s 값이 숫자가 아닙니다: %q", r+1, n.name, cell(row, col[n.name]))
+				return nil, fmt.Errorf("%d행 %s 값이 숫자가 아닙니다: %q", r+1, n.name, excel.Cell(row, col[n.name]))
 			}
 			*n.dst = v
 		}
