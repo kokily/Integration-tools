@@ -74,7 +74,7 @@ func findHeader(rows [][]string) (int, map[string]int, error) {
 func readOrder(path string) ([]OrderItem, error) {
 	f, err := excelize.OpenFile(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("엑셀(xlsx) 파일을 열 수 없습니다. 웰스토리 사이트에서 받은 원본 파일이 맞는지 확인하세요 (%v)", err)
 	}
 	defer f.Close()
 

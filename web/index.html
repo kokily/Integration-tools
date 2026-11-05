@@ -13,9 +13,12 @@
       --muted: #6b7280;
       --line: #d9dde3;
       --accent: #2563eb;
+      --accent-soft: #eff4ff;
       --ok: #15803d;
       --warn: #b45309;
+      --warn-soft: #fff7ed;
       --error: #b91c1c;
+      --error-soft: #fef2f2;
     }
 
     * {
@@ -103,6 +106,117 @@
     .error {
       color: var(--error);
     }
+
+    /* 파일 놓는 곳: 안에 투명한 파일 입력 칸을 깔아서, 끌어다 놓기와 눌러서 선택이 둘 다 됨 */
+    .drop {
+      position: relative;
+      display: block;
+      border: 2px dashed var(--line);
+      border-radius: 8px;
+      padding: 28px 16px;
+      text-align: center;
+      color: var(--muted);
+      margin: 16px 0;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .drop:hover,
+    .drop.dragover {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+    }
+
+    .drop.chosen {
+      border-style: solid;
+      border-color: var(--accent);
+      color: var(--text);
+    }
+
+    .drop input[type=file] {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0;
+      cursor: pointer;
+    }
+
+    .drop .label {
+      font-weight: bold;
+      display: block;
+      margin-bottom: 4px;
+      color: var(--text);
+    }
+
+    button.primary {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 10px 22px;
+      font: inherit;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button.primary:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+
+    button.secondary {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 8px 16px;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .result {
+      margin-top: 20px;
+    }
+
+    .result .box {
+      border-radius: 6px;
+      padding: 12px 16px;
+      margin-bottom: 12px;
+    }
+
+    .result .warn {
+      background: var(--warn-soft);
+      color: var(--warn);
+    }
+
+    .result .fail {
+      background: var(--error-soft);
+      color: var(--error);
+    }
+
+    .result ul {
+      margin: 0;
+      padding-left: 20px;
+    }
+
+    .result pre {
+      background: var(--bg);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 12px 16px;
+      margin: 0 0 12px;
+      white-space: pre-wrap;
+      font-family: Consolas, "Malgun Gothic", monospace;
+      font-size: 13px;
+    }
+
+    .result .folder {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      font-size: 13px;
+      color: var(--muted);
+    }
   </style>
 </head>
 
@@ -121,7 +235,16 @@
   <main>
     <section id="order" class="active">
       <h2>웰스토리 발주서</h2>
-      <p class="muted">준비 중입니다. (3단계에서 연결)</p>
+      <p class="muted">웰스토리 사이트에서 받은 거래내역서(xlsx)를 올리면 사업장별 EPS 업로드 파일과 확인용 파일을 만듭니다.</p>
+      <form class="job" data-job="order">
+        <label class="drop">
+          <span class="label">웰스토리 원본 파일</span>
+          <span class="name">여기에 끌어다 놓거나 눌러서 선택하세요 (.xlsx)</span>
+          <input type="file" name="src" accept=".xlsx" required>
+        </label>
+        <button type="submit" class="primary">변환 실행</button>
+      </form>
+      <div class="result"></div>
     </section>
     <section id="settlement">
       <h2>결산서</h2>
@@ -172,6 +295,85 @@
         el.className = "error";
         el.textContent = "서버에 연결할 수 없습니다. 프로그램이 실행 중인지 확인하세요.";
       });
+
+    // el(태그, 글자): 화면에 넣을 요소를 만듦. 글자는 textContent로 넣어서 HTML로 해석되지 않게 함
+    function el(tag, text, className) {
+      var e = document.createElement(tag);
+      if (text !== undefined) e.textContent = text;
+      if (className) e.className = className;
+      return e;
+    }
+
+    // 파일 놓는 곳: 파일을 고르면 이름을 보여 주고, 끌어다 놓는 동안 색을 바꿈
+    document.querySelectorAll(".drop").forEach(function (drop) {
+      var input = drop.querySelector("input[type=file]");
+      var name = drop.querySelector(".name");
+      var hint = name.textContent;
+      input.addEventListener("change", function () {
+        var chosen = input.files.length > 0;
+        name.textContent = chosen ? input.files[0].name : hint;
+        drop.classList.toggle("chosen", chosen);
+      });
+      input.addEventListener("dragenter", function () { drop.classList.add("dragover"); });
+      input.addEventListener("dragleave", function () { drop.classList.remove("dragover"); });
+      input.addEventListener("drop", function () { drop.classList.remove("dragover"); });
+    });
+
+    // showResult: 서버가 돌려준 실행 결과를 화면에 그림
+    function showResult(box, data) {
+      box.replaceChildren();
+      if (!data.ok) {
+        var fail = el("div", "", "box fail");
+        fail.append(el("strong", "실행 실패"), el("div", data.error));
+        box.append(fail);
+        return;
+      }
+      if (data.warnings && data.warnings.length > 0) {
+        var warn = el("div", "", "box warn");
+        warn.append(el("strong", "확인이 필요합니다"));
+        var ul = el("ul");
+        data.warnings.forEach(function (w) { ul.append(el("li", w)); });
+        warn.append(ul);
+        box.append(warn);
+      }
+      box.append(el("pre", (data.lines || []).join("\n")));
+
+      var folder = el("div", "", "folder");
+      var open = el("button", "결과 폴더 열기", "secondary");
+      open.type = "button";
+      open.addEventListener("click", function () {
+        fetch("/api/open", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: data.outDir })
+        })
+          .then(function (res) { return res.json(); })
+          .then(function (r) { if (r.error) alert(r.error); });
+      });
+      folder.append(open, el("span", data.outDir));
+      box.append(folder);
+    }
+
+    // 기능 실행: form.job 을 제출하면 /api/run/<data-job> 으로 파일을 보내고 결과를 표시
+    document.querySelectorAll("form.job").forEach(function (form) {
+      var box = form.parentElement.querySelector(".result");
+      var submit = form.querySelector("button[type=submit]");
+      form.addEventListener("submit", function (e) {
+        e.preventDefault(); // 페이지가 새로 고쳐지지 않게
+        submit.disabled = true;
+        submit.textContent = "변환 중...";
+        box.replaceChildren(el("p", "변환하고 있습니다. 잠시 기다려 주세요.", "muted"));
+
+        fetch("/api/run/" + form.dataset.job, { method: "POST", body: new FormData(form) })
+          .then(function (res) { return res.json(); })
+          .then(function (data) { showResult(box, data); })
+          .catch(function (err) { showResult(box, { ok: false, error: "서버와 통신하지 못했습니다: " + err }); })
+          .finally(function () {
+            submit.disabled = false;
+            submit.textContent = "변환 실행";
+          });
+      });
+    });
   </script>
 </body>
 
