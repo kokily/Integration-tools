@@ -12,7 +12,8 @@ import (
 const usage = `사용법:
   go run . 발주서 <웰스토리 원본.xlsx>
   go run . 결산서 <계약.xls> <비계약.xls> [지난달 결산자료 폴더]
-  go run . 소모품 <현재고현황(창고별).xls> <지난 소모품 결산 파일.xlsx>`
+  go run . 소모품 <현재고현황(창고별).xls> <지난 소모품 결산 파일.xlsx>
+  go run . 거래처별 <기간별구매현황[일자별].xls>`
 
 func main() {
 	if len(os.Args) < 2 {
@@ -45,6 +46,11 @@ func main() {
 			log.Fatal(usage)
 		}
 		runExpendables(os.Args[2], os.Args[3], cfg)
+	case "거래처별":
+		if len(os.Args) != 3 {
+			log.Fatal(usage)
+		}
+		runVendors(os.Args[2], cfg)
 	default:
 		log.Fatalf("알 수 없는 기능: %s\n%s", os.Args[1], usage)
 	}
@@ -203,4 +209,35 @@ func runExpendables(srcPath, templatePath string, cfg *Config) {
 		count += len(rs)
 	}
 	fmt.Printf("\n원본 %d줄 → 결산 품목 %d개, 재고금액 합계 %d\n저장: %s\n", len(rows), count, total, out)
+}
+
+// runVendors: ESP 기간별구매현황 → 거래처별 시트 (웰스토리 제외)
+func runVendors(srcPath string, cfg *Config) {
+	rows, err := readESP(srcPath)
+	if err != nil {
+		log.Fatalf("%s: %v", srcPath, err)
+	}
+	if len(rows) == 0 {
+		log.Fatal("원본에 품목이 없습니다")
+	}
+
+	sheets := buildVendorSheets(rows, cfg.Vendors)
+	for i, s := range sheets {
+		var total float64
+		for _, r := range s.Rows {
+			total += r.Total
+		}
+		fmt.Printf("%2d. %-12s %3d건  합계금액 %.0f\n", i+1, s.Name, len(s.Rows), total)
+	}
+
+	// 결과 파일: 원본 옆에 "거래처별_2026-10.xlsx" (원본 첫 줄 입고일자의 연월)
+	month := rows[0].Date
+	if len(month) >= 7 {
+		month = month[:7]
+	}
+	out := filepath.Join(filepath.Dir(srcPath), "거래처별_"+month+".xlsx")
+	if err := writeVendorFile(out, sheets); err != nil {
+		log.Fatalf("저장 실패: %v", err)
+	}
+	fmt.Printf("\n저장: %s (시트 %d개)\n", out, len(sheets))
 }

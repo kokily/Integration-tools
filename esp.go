@@ -13,6 +13,7 @@ import (
 
 // PurchaseRow: ESP 기간별구매현황[일자별]의 품목 한 줄
 type PurchaseRow struct {
+	Seq       string  // 순번 (원본 그대로, 쉼표 제거)
 	Date      string  // 입고일자 (2026-10-01)
 	Code      string  // 품번
 	Name      string  // 품명
@@ -29,7 +30,7 @@ type PurchaseRow struct {
 }
 
 var espRequiredCols = []string{
-	"입고일자", "품번", "품명", "규격", "수량", "단위", "단가",
+	"순번", "입고일자", "품번", "품명", "규격", "수량", "단위", "단가",
 	"금액", "부가세", "합계금액", "거래처명", "현장명", "입고창고",
 }
 
@@ -151,6 +152,7 @@ func readESP(path string) ([]PurchaseRow, error) {
 		}
 
 		p := PurchaseRow{
+			Seq:       strings.ReplaceAll(cell(row, col["순번"]), ",", ""),
 			Date:      cell(row, col["입고일자"]),
 			Code:      code,
 			Name:      cell(row, col["품명"]),

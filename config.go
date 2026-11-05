@@ -10,6 +10,7 @@ type Config struct {
 	WelstoryOrder WelstoryOrderConfig `json:"welstoryOrder"`
 	Settlement    SettlementConfig    `json:"settlement"`
 	Expendables   ExpendablesConfig   `json:"expendables"`
+	Vendors       VendorsConfig       `json:"vendors"`
 }
 
 type WelstoryOrderConfig struct {
@@ -30,6 +31,12 @@ type ExpendablesConfig struct {
 	Rates      map[string]float64  `json:"rates"`      // 연도 2자리 → 낙찰률 (예: "26": 0.68375)
 	Warehouses map[string][]string `json:"warehouses"` // 결과 시트 이름 → 원본 창고 이름들
 	Exclude    []string            `json:"exclude"`    // 결산에서 뺄 원본 창고
+}
+
+// VendorsConfig: 거래처별 변환 설정
+type VendorsConfig struct {
+	Order   []string `json:"order"`   // 시트 순서 (거래가 없어도 시트를 만듦). 없는 업체는 가나다순으로 뒤에
+	Exclude []string `json:"exclude"` // 시트를 만들지 않을 거래처
 }
 
 func loadConfig(path string) (*Config, error) {
